@@ -18,6 +18,7 @@ export type MealAssistantResult = {
     title: string;
     reason: string;
     time: string;
+    image_url?: string;
     ingredients: string[];
     steps: string[];
     tags: string[];
@@ -39,6 +40,7 @@ const responseSchema = {
           title: { type: "STRING" },
           reason: { type: "STRING" },
           time: { type: "STRING" },
+          image_url: { type: "STRING" },
           ingredients: { type: "ARRAY", items: { type: "STRING" } },
           steps: { type: "ARRAY", items: { type: "STRING" } },
           tags: { type: "ARRAY", items: { type: "STRING" } }
@@ -89,7 +91,7 @@ export async function generateMealAssistantResult(input: MealAssistantRequest): 
                     "Oneriler kullanicinin dakika sinirina uysun.",
                     "Malzeme yoksa genel ama mantikli oneriler ver.",
                     "Somut tarif adi yaz, belirsiz kategori adi yazma.",
-                    "Gorsel gerekiyorsa uydurma URL verme."
+                    "Gorsel URL uydurma; image_url bos kalabilir."
                   ],
                   ...input
                 })
@@ -133,6 +135,7 @@ function normalizeResult(value: Partial<MealAssistantResult>, input: MealAssista
       title: suggestion.title || "Pratik tarif",
       reason: suggestion.reason || "Bugun icin uygun gorunuyor.",
       time: suggestion.time || (input.max_minutes ? `${input.max_minutes} dakika` : "25 dakika"),
+      image_url: cleanImageUrl(suggestion.image_url) || foodSearchImageUrl(suggestion.title || "pratik yemek"),
       ingredients: Array.from(new Set(suggestion.ingredients ?? [])).slice(0, 8),
       steps: (suggestion.steps ?? []).filter(Boolean).slice(0, 6),
       tags: Array.from(new Set(suggestion.tags ?? [])).slice(0, 5)
@@ -188,6 +191,7 @@ function buildFallbackSuggestions(input: MealAssistantRequest, baseIngredients: 
       title: `${index + 1}. gun: ${title}`,
       reason: "Haftalik planda birbirini tekrar etmeyen, evde uygulanabilir bir secenek.",
       time: minutes,
+      image_url: foodSearchImageUrl(title),
       ingredients: Array.from(new Set([pantryMain, pantrySecond, pantryThird])).slice(0, 5),
       steps: ["Ana malzemeleri hazirla.", "Uygun pisirme yontemiyle pisir.", "Yanina salata veya yogurt gibi tamamlayici ekle."],
       tags: input.vegan_mode ? ["vegan", "haftalik"] : ["haftalik", "pratik"]
@@ -202,8 +206,20 @@ function buildFallbackSuggestions(input: MealAssistantRequest, baseIngredients: 
     title,
     reason: index === 0 ? "Secili malzemeleri merkezine alir ve hizli hazirlanir." : "Ayni malzemelerle farkli bir doku ve sunum verir.",
     time: minutes,
+    image_url: foodSearchImageUrl(title),
     ingredients: Array.from(new Set(baseIngredients)).slice(0, 6),
     steps: ["Malzemeleri dogra ve hazirla.", "Ana malzemeyi pisir veya sotele.", "Baharat, sos ve taze dokunusla servis et."],
     tags: input.vegan_mode ? ["vegan", "pratik"] : ["pratik", "ev yemegi"]
   }));
+}
+
+function cleanImageUrl(value: unknown) {
+  if (typeof value !== "string") return "";
+  if (!value.startsWith("https://")) return "";
+  return value;
+}
+
+function foodSearchImageUrl(title: string) {
+  const query = encodeURIComponent(`${title} food recipe`);
+  return `https://source.unsplash.com/900x700/?${query}`;
 }

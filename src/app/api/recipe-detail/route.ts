@@ -18,12 +18,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const { id } = querySchema.parse({ id: searchParams.get("id") });
 
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
-      .from("recipes")
-      .select("*,recipe_ingredients(id,name,amount,unit),recipe_steps(id,step_order,description),recipe_nutrition(*),recipe_lighten_suggestions(*)")
-      .eq("id", id)
-      .single();
+    const supabase = getRecipeReader(accessToken);
+    const { data, error } = await loadRecipeDetail(supabase, id);
 
     if (error || !data) return NextResponse.json({ error: "Tarif bulunamadi." }, { status: 404 });
 
@@ -36,4 +32,39 @@ export async function GET(request: Request) {
     const message = error instanceof Error ? error.message : "Tarif yuklenemedi.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
+}
+
+function getRecipeReader(accessToken: string) {
+  try {
+    return getSupabaseAdmin();
+  } catch {
+    return getSupabaseForRequest(accessToken);
+  }
+}
+
+async function loadRecipeDetail(supabase: ReturnType<typeof getSupabaseForRequest>, id: string) {
+  const rich = await supabase
+    .from("recipes")
+    .select("*,recipe_ingredients(id,name,amount,unit),recipe_steps(id,step_order,description),recipe_nutrition(*),recipe_lighten_suggestions(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (rich.data || !rich.error) return rich;
+
+  const basic = await supabase
+    .from("recipes")
+    .select("*,recipe_ingredients(id,name,amount,unit),recipe_steps(id,step_order,description)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!basic.data) return basic;
+
+  return {
+    data: {
+      ...basic.data,
+      recipe_nutrition: [],
+      recipe_lighten_suggestions: []
+    },
+    error: null
+  };
 }

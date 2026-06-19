@@ -46,7 +46,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (user) return <>{children}</>;
 
   async function signIn() {
-    const normalizedEmail = email.trim().toLocaleLowerCase("tr-TR");
+    const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || password.length < 6) return;
 
     setIsSending(true);
@@ -58,7 +58,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     });
 
     if (error) {
-      setMessage("Giris yapilamadi. Sifreyi kontrol et veya yeni hesap olustur.");
+      setMessage("Giris yapilamadi. E-posta ve sifreyi kontrol et.");
     } else {
       setMessage("Giris yapildi.");
     }
@@ -66,24 +66,37 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   async function signUp() {
-    const normalizedEmail = email.trim().toLocaleLowerCase("tr-TR");
+    const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || password.length < 6) return;
 
     setIsSending(true);
     setMessage("");
     const supabase = getBrowserSupabase();
-    const { error } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password,
-      options: {
-        emailRedirectTo: window.location.origin
-      }
-    });
+    try {
+      const response = await fetch("/api/create-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail, password })
+      });
+      const payload = await response.json();
 
-    if (error) {
-      setMessage("Hesap olusturulamadi. Bu e-posta zaten kayitli olabilir.");
-    } else {
-      setMessage("Hesap olusturuldu. Eger onay maili isterse Supabase'te Confirm email ayarini kapat.");
+      if (!response.ok) {
+        const text = String(payload.error ?? "");
+        if (!text.toLowerCase().includes("already")) throw new Error(text || "Hesap olusturulamadi.");
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password
+      });
+
+      if (error) {
+        setMessage("Hesap var ama giris yapilamadi. Sifreyi kontrol edip Giris yap'a bas.");
+      } else {
+        setMessage("Hesap hazir, giris yapildi.");
+      }
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "Hesap olusturulamadi.");
     }
     setIsSending(false);
   }
@@ -132,6 +145,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           <UserPlus size={17} />
           Yeni hesap olustur
         </button>
+        <p className="mt-3 text-center text-xs font-semibold text-cocoa/50">Sifre en az 6 karakter olmali.</p>
 
         {message ? <p className="mt-4 rounded-2xl bg-cream-100 px-4 py-3 text-sm font-semibold text-cocoa/70">{message}</p> : null}
       </div>

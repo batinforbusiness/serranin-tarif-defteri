@@ -89,13 +89,32 @@ export default function RecipeDetailPage() {
       }
     });
     const payload = await response.json();
-    const data = response.ok ? payload.recipe : null;
+    let data = response.ok ? payload.recipe : null;
+    let canEditValue = Boolean(payload.can_edit);
+
+    if (!data) {
+      const supabase = getBrowserSupabase();
+      const fallback = await supabase
+        .from("recipes")
+        .select("*,recipe_ingredients(id,name,amount,unit),recipe_steps(id,step_order,description)")
+        .eq("id", params.id)
+        .maybeSingle();
+
+      if (fallback.data) {
+        data = {
+          ...fallback.data,
+          recipe_nutrition: [],
+          recipe_lighten_suggestions: []
+        };
+        canEditValue = fallback.data.user_id === session.user.id;
+      }
+    }
 
     if (data) {
       const detail = data as RecipeDetail;
       detail.recipe_steps.sort((a, b) => a.step_order - b.step_order);
       setRecipe(detail);
-      setCanEdit(Boolean(payload.can_edit));
+      setCanEdit(canEditValue);
       setTitleDraft(detail.title);
       setMetaDraft({
         category: detail.category ?? "",

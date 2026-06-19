@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChefHat, Leaf, Loader2, Plus, Refrigerator, Sparkles, X } from "lucide-react";
+import { BookOpenCheck, CalendarDays, ChefHat, Leaf, Loader2, Plus, Refrigerator, Sparkles, X } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
 import { IngredientIcon } from "@/components/ingredient-icon";
+import { SafeImage } from "@/components/safe-image";
 import { VEGAN_STORAGE_KEY } from "@/components/theme-client";
 import { useAuth } from "@/components/auth-provider";
 import type { MealAssistantResult } from "@/lib/meal-assistant";
@@ -52,8 +53,10 @@ export default function AssistantPage() {
   const [preferences, setPreferences] = useState<string[]>(["Pratik"]);
   const [veganMode, setVeganMode] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [savingRecipeIndex, setSavingRecipeIndex] = useState<number | null>(null);
   const [result, setResult] = useState<MealAssistantResult | null>(null);
   const [error, setError] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
 
   const pantry = useMemo(
     () => Array.from(new Set([...selectedIngredients, ...splitExtraIngredients(extraIngredient)])).join(", "),
@@ -82,6 +85,7 @@ export default function AssistantPage() {
     if (!session) return;
     setLoading(true);
     setError("");
+    setSaveMessage("");
 
     try {
       const response = await fetch("/api/meal-assistant", {
@@ -106,6 +110,37 @@ export default function AssistantPage() {
       setError(caught instanceof Error ? caught.message : "Asistan cevap veremedi.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveSuggestion(index: number) {
+    if (!session || !result) return;
+    const suggestion = result.suggestions[index];
+    if (!suggestion) return;
+
+    setSavingRecipeIndex(index);
+    setSaveMessage("");
+    setError("");
+
+    try {
+      const response = await fetch("/api/save-assistant-recipe", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          suggestion,
+          source_title: result.title
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "Tarif deftere eklenemedi.");
+      setSaveMessage("Tarif defterine eklendi.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Tarif deftere eklenemedi.");
+    } finally {
+      setSavingRecipeIndex(null);
     }
   }
 
@@ -251,6 +286,7 @@ export default function AssistantPage() {
         </div>
 
         {error ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p> : null}
+        {saveMessage ? <p className="rounded-2xl bg-mint px-4 py-3 text-sm font-black text-sage">{saveMessage}</p> : null}
 
         {result ? (
           <section className="grid gap-3">
@@ -263,9 +299,18 @@ export default function AssistantPage() {
 
             {result.suggestions.map((suggestion, index) => (
               <article key={`${suggestion.title}-${index}`} className="soft-card overflow-hidden rounded-3xl">
-                <div className="h-32 bg-gradient-to-br from-melon via-peach to-butter p-5">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-cocoa/55">{suggestion.time}</p>
-                  <h3 className="mt-2 text-2xl font-black leading-tight text-cocoa">{suggestion.title}</h3>
+                <div className="relative h-44 overflow-hidden bg-gradient-to-br from-melon via-peach to-butter">
+                  <SafeImage
+                    src={suggestion.image_url}
+                    alt={suggestion.title}
+                    className="h-full w-full object-cover"
+                    fallback={<div className="h-full w-full bg-gradient-to-br from-melon via-peach to-butter" />}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-cocoa/70 via-cocoa/5 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-5 text-white">
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-white/75">{suggestion.time}</p>
+                    <h3 className="mt-2 text-2xl font-black leading-tight">{suggestion.title}</h3>
+                  </div>
                 </div>
                 <div className="p-5">
                   <p className="text-sm leading-6 text-cocoa/70">{suggestion.reason}</p>
@@ -284,6 +329,14 @@ export default function AssistantPage() {
                       </p>
                     ))}
                   </div>
+                  <button
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-cocoa px-5 py-4 text-sm font-black text-white shadow-soft disabled:opacity-55"
+                    disabled={savingRecipeIndex === index}
+                    onClick={() => void saveSuggestion(index)}
+                  >
+                    {savingRecipeIndex === index ? <Loader2 className="animate-spin" size={17} /> : <BookOpenCheck size={17} />}
+                    Defterime ekle
+                  </button>
                 </div>
               </article>
             ))}
