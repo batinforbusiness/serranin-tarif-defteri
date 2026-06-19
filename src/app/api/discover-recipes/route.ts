@@ -17,6 +17,24 @@ function shuffle<T>(items: T[]) {
   return [...items].sort(() => Math.random() - 0.5);
 }
 
+function normalizeRecipeTitle(title: string) {
+  return title
+    .toLocaleLowerCase("tr-TR")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function uniqueByTitle(recipes: DiscoverRecipe[]) {
+  const seen = new Set<string>();
+  return recipes.filter((recipe) => {
+    const key = normalizeRecipeTitle(recipe.title);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function withRatings(recipes: RecipeSummary[], ratings: RatingRow[], userId: string): DiscoverRecipe[] {
   return recipes.map((recipe) => {
     const recipeRatings = ratings.filter((rating) => rating.recipe_id === recipe.id);
@@ -53,8 +71,8 @@ export async function GET(request: Request) {
     if (recipesError) throw recipesError;
     if (ratingsError) throw ratingsError;
 
-    const ratedRecipes = withRatings((recipes ?? []) as RecipeSummary[], (ratings ?? []) as RatingRow[], userData.user.id);
-    const random = shuffle(ratedRecipes).slice(0, 8);
+    const ratedRecipes = uniqueByTitle(withRatings((recipes ?? []) as RecipeSummary[], (ratings ?? []) as RatingRow[], userData.user.id));
+    const random = shuffle(ratedRecipes).slice(0, 12);
     const leaderboard = [...ratedRecipes]
       .filter((recipe) => recipe.rating_count > 0)
       .sort((a, b) => b.average_rating - a.average_rating || b.rating_count - a.rating_count)

@@ -68,7 +68,7 @@ export async function generateMealAssistantResult(input: MealAssistantRequest): 
           parts: [
             {
               text:
-                "Sen Serra'nın Tarif Defteri içinde çalışan sıcak, pratik ve güvenilir bir yemek asistanısın. Kullanıcıya kısa, uygulanabilir, ev mutfağına uygun öneriler ver. Vegan mod açıksa hayvansal ürün önerme. Yanıt sadece JSON olsun."
+                "Sen Serra'nin Tarif Defteri icinde calisan guvenilir bir yemek onerme motorusun. Genel yemek bilgisini, ev mutfagi pratiklerini ve kullanicinin secili malzemelerini birlikte kullan. Ayni oneriyi tekrar etme. Uydurma internet kaynagi veya gorsel URL verme. Vegan mod aciksa hayvansal urun onerme. Tarifler kisa, uygulanabilir ve olculu olsun. Yanit sadece JSON olsun."
             }
           ]
         },
@@ -80,10 +80,17 @@ export async function generateMealAssistantResult(input: MealAssistantRequest): 
                 text: JSON.stringify({
                   hedef:
                     input.mode === "pantry"
-                      ? "Evdeki malzemelerle yemek öner"
+                      ? "Evdeki secili malzemelerle farkli yemek onerileri uret. Secili malzemeleri ana karar verici olarak kullan."
                       : input.mode === "today"
-                        ? "Bugün ne pişirsek önerisi üret"
-                        : "7 günlük pratik haftalık menü üret",
+                        ? "Bugun icin birbirinden farkli pratik yemek onerileri uret."
+                        : "7 gunluk birbirini tekrar etmeyen pratik haftalik menu uret.",
+                  kalite_kurallari: [
+                    "Ayni basligi veya ayni adimlari tekrar etme.",
+                    "Oneriler kullanicinin dakika sinirina uysun.",
+                    "Malzeme yoksa genel ama mantikli oneriler ver.",
+                    "Somut tarif adi yaz, belirsiz kategori adi yazma.",
+                    "Gorsel gerekiyorsa uydurma URL verme."
+                  ],
                   ...input
                 })
               }
@@ -91,9 +98,9 @@ export async function generateMealAssistantResult(input: MealAssistantRequest): 
           }
         ],
         generationConfig: {
-          temperature: 0.45,
+          temperature: 0.65,
           responseMimeType: "application/json",
-          responseSchema: responseSchema
+          responseSchema
         }
       })
     }
@@ -106,26 +113,37 @@ export async function generateMealAssistantResult(input: MealAssistantRequest): 
   if (!raw) return fallbackAssistantResult(input);
 
   try {
-    return normalizeResult(JSON.parse(raw));
+    return normalizeResult(JSON.parse(raw), input);
   } catch {
     return fallbackAssistantResult(input);
   }
 }
 
-function normalizeResult(value: Partial<MealAssistantResult>): MealAssistantResult {
-  return {
-    title: value.title || "Bugünün mutfak fikri",
-    summary: value.summary || "Elindeki bilgilere göre pratik öneriler hazırladım.",
-    suggestions: (value.suggestions ?? []).slice(0, 7).map((suggestion) => ({
+function normalizeResult(value: Partial<MealAssistantResult>, input: MealAssistantRequest): MealAssistantResult {
+  const seen = new Set<string>();
+  const suggestions = (value.suggestions ?? [])
+    .filter((suggestion) => {
+      const key = (suggestion.title || "").toLocaleLowerCase("tr-TR").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, input.mode === "weekly" ? 7 : 4)
+    .map((suggestion) => ({
       title: suggestion.title || "Pratik tarif",
-      reason: suggestion.reason || "Bugün için uygun görünüyor.",
-      time: suggestion.time || "25 dakika",
-      ingredients: suggestion.ingredients ?? [],
-      steps: suggestion.steps ?? [],
-      tags: suggestion.tags ?? []
-    })),
-    shopping_focus: value.shopping_focus ?? [],
-    serra_note: value.serra_note || "Aşkım, bunu evdeki tempoya göre kolayca uyarlayabiliriz."
+      reason: suggestion.reason || "Bugun icin uygun gorunuyor.",
+      time: suggestion.time || (input.max_minutes ? `${input.max_minutes} dakika` : "25 dakika"),
+      ingredients: Array.from(new Set(suggestion.ingredients ?? [])).slice(0, 8),
+      steps: (suggestion.steps ?? []).filter(Boolean).slice(0, 6),
+      tags: Array.from(new Set(suggestion.tags ?? [])).slice(0, 5)
+    }));
+
+  return {
+    title: value.title || defaultTitle(input),
+    summary: value.summary || "Elindeki bilgilere gore pratik oneriler hazirladim.",
+    suggestions: suggestions.length ? suggestions : fallbackAssistantResult(input).suggestions,
+    shopping_focus: [],
+    serra_note: value.serra_note || "Askim, bunu damak zevkine gore kolayca uyarlayabiliriz."
   };
 }
 
@@ -135,30 +153,57 @@ function fallbackAssistantResult(input: MealAssistantRequest): MealAssistantResu
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 8);
-  const baseIngredients = pantry.length ? pantry : input.vegan_mode ? ["sebze", "bakliyat", "zeytinyağı"] : ["yumurta", "peynir", "sebze"];
+  const baseIngredients = pantry.length ? pantry : input.vegan_mode ? ["sebze", "mercimek", "zeytinyagi"] : ["yumurta", "peynir", "sebze"];
+  const suggestions = buildFallbackSuggestions(input, baseIngredients);
 
   return {
-    title:
-      input.mode === "weekly"
-        ? "Bu haftanın pratik menüsü"
-        : input.mode === "pantry"
-          ? "Dolaptan çıkan fikirler"
-          : "Bugün ne pişirsek?",
+    title: defaultTitle(input),
     summary: input.vegan_mode
-      ? "Vegan moda uygun, pratik ve hafif öneriler hazırladım."
-      : "Pratik, evde uygulanabilir ve az uğraştıran öneriler hazırladım.",
-    suggestions: Array.from({ length: input.mode === "weekly" ? 7 : 3 }, (_, index) => ({
-      title:
-        input.mode === "weekly"
-          ? `${index + 1}. gün: ${input.vegan_mode ? "Sebzeli kase" : "Pratik ev yemeği"}`
-          : `${input.vegan_mode ? "Bitkisel" : "Pratik"} ${baseIngredients[0]} tabağı`,
-      reason: "Malzemesi kolay, hızlı hazırlanır ve günlük kullanıma uygun.",
-      time: input.max_minutes ? `${input.max_minutes} dakika içinde` : "25-35 dakika",
-      ingredients: baseIngredients,
-      steps: ["Malzemeleri hazırla.", "Ana malzemeyi pişir veya sotele.", "Baharat ve sosla tamamlayıp servis et."],
-      tags: input.vegan_mode ? ["vegan", "pratik"] : ["pratik", "ev yemeği"]
-    })),
-    shopping_focus: input.vegan_mode ? ["yeşillik", "bakliyat", "taze sebze"] : ["taze sebze", "yoğurt", "protein"],
-    serra_note: "Aşkım, bunu damak zevkine göre kolayca değiştirebiliriz."
+      ? "Vegan moda uygun, pratik ve hafif oneriler hazirladim."
+      : "Pratik, evde uygulanabilir ve az ugrastiran oneriler hazirladim.",
+    suggestions,
+    shopping_focus: [],
+    serra_note: "Askim, bunu damak zevkine gore kolayca degistirebiliriz."
   };
+}
+
+function defaultTitle(input: MealAssistantRequest) {
+  if (input.mode === "weekly") return "Bu haftanin pratik menusu";
+  if (input.mode === "pantry") return "Dolaptan cikan fikirler";
+  return "Bugun ne pisirsek?";
+}
+
+function buildFallbackSuggestions(input: MealAssistantRequest, baseIngredients: string[]): MealAssistantResult["suggestions"] {
+  const minutes = input.max_minutes ? `${input.max_minutes} dakika icinde` : "25-35 dakika";
+  const pantryMain = baseIngredients[0] || "sebze";
+  const pantrySecond = baseIngredients[1] || (input.vegan_mode ? "mercimek" : "yogurt");
+  const pantryThird = baseIngredients[2] || (input.vegan_mode ? "nohut" : "yumurta");
+
+  if (input.mode === "weekly") {
+    const weekly = input.vegan_mode
+      ? ["Mercimekli sebze corbasi", "Nohutlu renkli salata", "Zeytinyagli makarna", "Sebzeli pirinc kasesi", "Firin patates ve yesillik", "Bulgurlu kabak yemegi", "Mantarli wrap"]
+      : ["Yogurtlu kofte tabagi", "Sebzeli omlet", "Tavuklu makarna", "Domatesli pirinc pilavi", "Peynirli tost ve salata", "Kabakli mucver", "Pratik firin patates"];
+
+    return weekly.map((title, index) => ({
+      title: `${index + 1}. gun: ${title}`,
+      reason: "Haftalik planda birbirini tekrar etmeyen, evde uygulanabilir bir secenek.",
+      time: minutes,
+      ingredients: Array.from(new Set([pantryMain, pantrySecond, pantryThird])).slice(0, 5),
+      steps: ["Ana malzemeleri hazirla.", "Uygun pisirme yontemiyle pisir.", "Yanina salata veya yogurt gibi tamamlayici ekle."],
+      tags: input.vegan_mode ? ["vegan", "haftalik"] : ["haftalik", "pratik"]
+    }));
+  }
+
+  const titles = input.vegan_mode
+    ? [`${pantryMain} ile sicak sebze kasesi`, `${pantrySecond} salatasi`, `${pantryThird} destekli pratik tabak`]
+    : [`${pantryMain} ve ${pantrySecond} tabagi`, `${pantryThird} ile pratik tava`, `${pantryMain} destekli doyurucu kase`];
+
+  return titles.map((title, index) => ({
+    title,
+    reason: index === 0 ? "Secili malzemeleri merkezine alir ve hizli hazirlanir." : "Ayni malzemelerle farkli bir doku ve sunum verir.",
+    time: minutes,
+    ingredients: Array.from(new Set(baseIngredients)).slice(0, 6),
+    steps: ["Malzemeleri dogra ve hazirla.", "Ana malzemeyi pisir veya sotele.", "Baharat, sos ve taze dokunusla servis et."],
+    tags: input.vegan_mode ? ["vegan", "pratik"] : ["pratik", "ev yemegi"]
+  }));
 }

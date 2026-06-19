@@ -46,6 +46,7 @@ export default function RecipeDetailPage() {
   const router = useRouter();
   const { session } = useAuth();
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [savingTitle, setSavingTitle] = useState(false);
@@ -82,17 +83,19 @@ export default function RecipeDetailPage() {
   const loadRecipe = useCallback(async () => {
     if (!session) return;
     setLoading(true);
-    const supabase = getBrowserSupabase();
-    const { data } = await supabase
-      .from("recipes")
-      .select("*,recipe_ingredients(id,name,amount,unit),recipe_steps(id,step_order,description),recipe_nutrition(*),recipe_lighten_suggestions(*)")
-      .eq("id", params.id)
-      .single();
+    const response = await fetch(`/api/recipe-detail?id=${params.id}`, {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`
+      }
+    });
+    const payload = await response.json();
+    const data = response.ok ? payload.recipe : null;
 
     if (data) {
       const detail = data as RecipeDetail;
       detail.recipe_steps.sort((a, b) => a.step_order - b.step_order);
       setRecipe(detail);
+      setCanEdit(Boolean(payload.can_edit));
       setTitleDraft(detail.title);
       setMetaDraft({
         category: detail.category ?? "",
@@ -344,6 +347,28 @@ export default function RecipeDetailPage() {
     setAdding(false);
   }
 
+  async function copyRecipeToMyBook() {
+    if (!recipe || !session) return;
+    setAdding(true);
+    setMessage("");
+
+    const response = await fetch("/api/copy-recipe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({ recipe_id: recipe.id })
+    });
+    const payload = await response.json();
+    if (response.ok) {
+      router.push(`/recipes/${payload.id}`);
+    } else {
+      setMessage(payload.error ?? "Tarif deftere eklenemedi.");
+    }
+    setAdding(false);
+  }
+
   async function calculateNutrition(options?: { silent?: boolean }) {
     if (!recipe || !session) return;
     setCalculatingNutrition(true);
@@ -485,7 +510,7 @@ export default function RecipeDetailPage() {
                 ) : (
                   <div className="mt-2 flex items-start gap-2">
                     <h1 className="min-w-0 flex-1 text-3xl font-semibold leading-tight">{recipe.title}</h1>
-                    <IconButton label="Tarif adını düzenle" onClick={() => setEditingTitle(true)} icon={<Pencil size={17} />} />
+                    {canEdit ? <IconButton label="Tarif adını düzenle" onClick={() => setEditingTitle(true)} icon={<Pencil size={17} />} /> : null}
                   </div>
                 )}
 
@@ -516,9 +541,11 @@ export default function RecipeDetailPage() {
                       <Users size={13} />
                       {recipe.servings || "Kişi yok"}
                     </span>
-                    <button className="rounded-full bg-butter px-3 py-1 font-semibold text-rosewood" onClick={() => setEditingMeta(true)}>
-                      Bilgileri düzenle
-                    </button>
+                    {canEdit ? (
+                      <button className="rounded-full bg-butter px-3 py-1 font-semibold text-rosewood" onClick={() => setEditingMeta(true)}>
+                        Bilgileri düzenle
+                      </button>
+                    ) : null}
                   </div>
                 )}
                 {recipe.notes ? <p className="mt-4 text-sm leading-6 text-cocoa/70">{recipe.notes}</p> : null}
@@ -532,11 +559,13 @@ export default function RecipeDetailPage() {
               calculating={calculatingNutrition}
             />
 
-            <LightenRecipeCard
-              suggestion={recipe.recipe_lighten_suggestions?.[0] ?? null}
-              loading={lighteningRecipe}
-              onLighten={() => void lightenCurrentRecipe()}
-            />
+            {canEdit ? (
+              <LightenRecipeCard
+                suggestion={recipe.recipe_lighten_suggestions?.[0] ?? null}
+                loading={lighteningRecipe}
+                onLighten={() => void lightenCurrentRecipe()}
+              />
+            ) : null}
 
             <section className="soft-card rounded-3xl p-5">
               <div className="flex items-center justify-between gap-3">
@@ -567,15 +596,19 @@ export default function RecipeDetailPage() {
                           <span className="font-semibold">{ingredient.name}</span>
                           <span className="ml-2 text-cocoa/60">{[ingredient.amount, ingredient.unit].filter(Boolean).join(" ")}</span>
                         </div>
-                        <IconButton label="Malzemeyi düzenle" onClick={() => startIngredientEdit(ingredient)} icon={<Pencil size={15} />} />
-                        <IconButton label="Malzemeyi sil" onClick={() => void deleteIngredient(ingredient.id)} icon={<Trash2 size={15} />} danger />
+                        {canEdit ? (
+                          <>
+                            <IconButton label="Malzemeyi düzenle" onClick={() => startIngredientEdit(ingredient)} icon={<Pencil size={15} />} />
+                            <IconButton label="Malzemeyi sil" onClick={() => void deleteIngredient(ingredient.id)} icon={<Trash2 size={15} />} danger />
+                          </>
+                        ) : null}
                       </div>
                     )}
                   </li>
                 ))}
               </ul>
 
-              <div className="mt-5 rounded-3xl bg-cream-100/70 p-3">
+              {canEdit ? <div className="mt-5 rounded-3xl bg-cream-100/70 p-3">
                 <p className="text-sm font-semibold">Malzeme ekle</p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <input className="col-span-2 rounded-2xl border border-rosewood/10 bg-white px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-rosewood/10" placeholder="Malzeme adı" value={ingredientForm.name} onChange={(event) => setIngredientForm({ ...ingredientForm, name: event.target.value })} />
@@ -586,11 +619,11 @@ export default function RecipeDetailPage() {
                   {savingIngredient ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
                   Malzemeye ekle
                 </button>
-              </div>
+              </div> : null}
 
-              <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-rosewood px-5 py-4 font-semibold text-white" onClick={() => void addToShoppingList()} disabled={adding}>
-                {adding ? <Loader2 className="animate-spin" size={18} /> : <ShoppingBasket size={18} />}
-                Alışveriş listesine ekle
+              <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-rosewood px-5 py-4 font-semibold text-white" onClick={() => void (canEdit ? addToShoppingList() : copyRecipeToMyBook())} disabled={adding}>
+                {adding ? <Loader2 className="animate-spin" size={18} /> : canEdit ? <ShoppingBasket size={18} /> : <Plus size={18} />}
+                {canEdit ? "Alışveriş listesine ekle" : "Defterime ekle"}
               </button>
             </section>
 
@@ -618,8 +651,12 @@ export default function RecipeDetailPage() {
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-butter font-semibold text-rosewood">{step.step_order}</span>
                         <span className="min-w-0 flex-1">{step.description}</span>
                         <div className="flex shrink-0 gap-1">
-                          <IconButton label="Adımı düzenle" onClick={() => startStepEdit(step)} icon={<Pencil size={15} />} />
-                          <IconButton label="Adımı sil" onClick={() => void deleteStep(step.id)} icon={<Trash2 size={15} />} danger />
+                          {canEdit ? (
+                            <>
+                              <IconButton label="Adımı düzenle" onClick={() => startStepEdit(step)} icon={<Pencil size={15} />} />
+                              <IconButton label="Adımı sil" onClick={() => void deleteStep(step.id)} icon={<Trash2 size={15} />} danger />
+                            </>
+                          ) : null}
                         </div>
                       </div>
                     )}
@@ -627,22 +664,24 @@ export default function RecipeDetailPage() {
                 ))}
               </ol>
 
-              <div className="mt-5 rounded-3xl bg-cream-100/70 p-3">
+              {canEdit ? <div className="mt-5 rounded-3xl bg-cream-100/70 p-3">
                 <p className="text-sm font-semibold">Yeni adım ekle</p>
                 <textarea className="mt-3 min-h-24 w-full rounded-2xl border border-rosewood/10 bg-white px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-rosewood/10" placeholder={`${nextStepOrder}. adımı yaz`} value={stepText} onChange={(event) => setStepText(event.target.value)} />
                 <button className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-cocoa px-4 py-3 text-sm font-semibold text-white disabled:opacity-55" onClick={() => void addStep()} disabled={savingStep || !stepText.trim()}>
                   {savingStep ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
                   Yapılışa ekle
                 </button>
-              </div>
+              </div> : null}
             </section>
 
             {message ? <p className="rounded-2xl bg-mint px-4 py-3 text-sm font-semibold text-sage">{message}</p> : null}
 
-            <button className="flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 font-semibold text-red-700" onClick={() => void deleteRecipe()} disabled={deleting}>
-              {deleting ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
-              Tarifi sil
-            </button>
+            {canEdit ? (
+              <button className="flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 font-semibold text-red-700" onClick={() => void deleteRecipe()} disabled={deleting}>
+                {deleting ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
+                Tarifi sil
+              </button>
+            ) : null}
           </>
         ) : (
           <p className="soft-card rounded-3xl p-5 text-sm text-cocoa/70">Tarif bulunamadı.</p>
