@@ -59,6 +59,10 @@ export type DiscoverRecipe = RecipeSummary & {
   average_rating: number;
   rating_count: number;
   my_rating: number | null;
+  is_external?: boolean;
+  source_name?: string;
+  source_url?: string;
+  external_recipe?: ExtractedRecipe;
 };
 
 export type RecipeDetail = RecipeSummary & {

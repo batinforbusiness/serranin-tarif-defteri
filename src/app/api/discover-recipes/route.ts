@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchExternalDiscoverRecipes } from "@/lib/external-recipes";
 import { getAccessToken, getSupabaseAdmin, getSupabaseForRequest } from "@/lib/supabase/server";
 import type { DiscoverRecipe, RecipeSummary } from "@/lib/types";
 
@@ -77,7 +78,11 @@ export async function GET(request: Request) {
     if (ratingsError) throw ratingsError;
 
     const ratedRecipes = uniqueByTitle(withRatings((recipes ?? []) as RecipeSummary[], (ratings ?? []) as RatingRow[], userData.user.id));
-    const random = shuffle(ratedRecipes).slice(0, 12);
+    const externalRecipes = await fetchExternalDiscoverRecipes(8).catch((error) => {
+      console.warn("External recipes could not be loaded", error instanceof Error ? error.message : error);
+      return [];
+    });
+    const random = shuffle(uniqueByTitle([...externalRecipes, ...ratedRecipes])).slice(0, 12);
     const leaderboard = [...ratedRecipes]
       .filter((recipe) => recipe.rating_count > 0)
       .sort((a, b) => b.average_rating - a.average_rating || b.rating_count - a.rating_count)

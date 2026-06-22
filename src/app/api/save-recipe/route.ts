@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { storeRecipeImage } from "@/lib/recipe-image-storage";
+import { saveRecipeNutrition } from "@/lib/save-recipe-nutrition";
 import { getAccessToken, getSupabaseForRequest } from "@/lib/supabase/server";
 import { saveRecipeSchema } from "@/lib/validation";
 
@@ -83,22 +84,17 @@ export async function POST(request: Request) {
 
     if (ingredientsError || stepsError) throw ingredientsError ?? stepsError;
 
-    if (body.recipe.nutrition) {
-      const { error: nutritionError } = await supabase.from("recipe_nutrition").upsert({
-        recipe_id: recipe.id,
-        total_calories: body.recipe.nutrition.total_calories,
-        calories_per_serving: body.recipe.nutrition.calories_per_serving,
-        protein_g: body.recipe.nutrition.protein_g,
-        carbs_g: body.recipe.nutrition.carbs_g,
-        fat_g: body.recipe.nutrition.fat_g,
-        confidence: body.recipe.nutrition.confidence,
-        nutrition_note: body.recipe.nutrition.nutrition_note
-      });
-
-      if (nutritionError) {
-        console.warn("Recipe nutrition could not be stored", nutritionError.message);
-      }
-    }
+    await saveRecipeNutrition(supabase, {
+      id: recipe.id,
+      title: body.recipe.title,
+      category: body.recipe.category,
+      servings: body.recipe.servings,
+      cooking_time: body.recipe.cooking_time,
+      notes: body.recipe.notes,
+      ingredients,
+      steps,
+      nutrition: body.recipe.nutrition
+    });
 
     return NextResponse.json({ id: recipe.id });
   } catch (error) {

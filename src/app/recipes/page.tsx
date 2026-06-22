@@ -22,6 +22,8 @@ export default function RecipesPage() {
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORY);
   const [loading, setLoading] = useState(true);
   const [veganMode, setVeganMode] = useState(false);
+  const [deletingRecipeId, setDeletingRecipeId] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const syncVeganMode = () => setVeganMode(window.localStorage.getItem(VEGAN_STORAGE_KEY) === "true");
@@ -81,6 +83,25 @@ export default function RecipesPage() {
     if (!categories.includes(selectedCategory)) setSelectedCategory(ALL_CATEGORY);
   }, [categories, selectedCategory]);
 
+  async function deleteRecipe(recipe: RecipeListItem) {
+    if (!window.confirm(`${recipe.title} tarifini silmek istiyor musun?`)) return;
+
+    setDeletingRecipeId(recipe.id);
+    setMessage("");
+
+    const supabase = getBrowserSupabase();
+    const { error } = await supabase.from("recipes").delete().eq("id", recipe.id);
+
+    if (error) {
+      setMessage("Tarif silinemedi. Sadece kendi kaydettiğin tarifleri silebilirsin.");
+    } else {
+      setRecipes((current) => current.filter((item) => item.id !== recipe.id));
+      setMessage("Tarif silindi.");
+    }
+
+    setDeletingRecipeId(null);
+  }
+
   return (
     <AuthGate>
       <section className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
@@ -115,6 +136,8 @@ export default function RecipesPage() {
           </div>
         ) : null}
 
+        {message ? <p className="rounded-2xl bg-cream-100 px-4 py-3 text-sm font-black text-cocoa/70">{message}</p> : null}
+
         {visibleRecipes.length ? (
           <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
             {categories.map((category, index) => {
@@ -144,7 +167,14 @@ export default function RecipesPage() {
           {loading ? (
             <p className="soft-card rounded-3xl p-5 text-sm text-cocoa/70">Tarifler yükleniyor...</p>
           ) : filteredRecipes.length ? (
-            filteredRecipes.map((recipe) => <RecipeCard key={recipe.id} recipe={recipe} />)
+            filteredRecipes.map((recipe) => (
+              <RecipeCard
+                key={recipe.id}
+                recipe={recipe}
+                onDelete={(item) => void deleteRecipe(item as RecipeListItem)}
+                deleting={deletingRecipeId === recipe.id}
+              />
+            ))
           ) : recipes.length && veganMode ? (
             <EmptyState
               title="Vegan tarif görünmüyor"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { saveRecipeNutrition } from "@/lib/save-recipe-nutrition";
 import { getAccessToken, getSupabaseForRequest } from "@/lib/supabase/server";
 
 const suggestionSchema = z.object({
@@ -74,6 +75,17 @@ export async function POST(request: Request) {
     ]);
 
     if (ingredientsError || stepsError) throw ingredientsError ?? stepsError;
+
+    await saveRecipeNutrition(supabase, {
+      id: recipe.id,
+      title: body.suggestion.title,
+      category,
+      servings: "",
+      cooking_time: body.suggestion.time,
+      notes: body.suggestion.reason,
+      ingredients,
+      steps
+    });
 
     return NextResponse.json({ id: recipe.id });
   } catch (error) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { BookPlus, ChefHat, Heart, Loader2, RefreshCw, Sparkles, Star, Trophy, X } from "lucide-react";
 import { AuthGate } from "@/components/auth-gate";
@@ -59,6 +59,10 @@ export default function DiscoverPage() {
 
   async function rateRecipe(recipe: DiscoverRecipe, rating: number) {
     if (!session) return;
+    if (recipe.is_external) {
+      setMessage("Bu internet tarifini puanlamadan once defterine ekle.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -87,7 +91,19 @@ export default function DiscoverPage() {
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/copy-recipe", {
+      const response = recipe.is_external
+        ? await fetch("/api/save-recipe", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({
+              recipe: recipe.external_recipe,
+              source_url: recipe.source_url || "https://www.themealdb.com/"
+            })
+          })
+        : await fetch("/api/copy-recipe", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -109,7 +125,10 @@ export default function DiscoverPage() {
   function handleSwipe(direction: SwipeDirection) {
     if (!currentRecipe || busy) return;
     if (direction === "left") skipCard();
-    if (direction === "right") void rateRecipe(currentRecipe, 5);
+    if (direction === "right") {
+      if (currentRecipe.is_external) void copyRecipe(currentRecipe);
+      else void rateRecipe(currentRecipe, 5);
+    }
   }
 
   useEffect(() => {
@@ -219,7 +238,7 @@ function RecipeSwipeCard({
       onTouchStart={(event) => onTouchStart?.(event.changedTouches[0].clientX)}
       onTouchEnd={(event) => onTouchEnd?.(event.changedTouches[0].clientX)}
     >
-      <Link href={`/recipes/${recipe.id}`} className="block">
+      <MaybeRecipeLink recipe={recipe} className="block">
         <div className="relative h-72 bg-gradient-to-br from-melon via-peach to-butter">
           <SafeImage
             src={recipe.image_url}
@@ -238,14 +257,20 @@ function RecipeSwipeCard({
             {recipe.average_rating || "-"}
             <span className="text-xs text-cocoa/45">({recipe.rating_count})</span>
           </span>
+          {recipe.is_external ? (
+            <span className="absolute left-4 top-4 rounded-full bg-white/95 px-3 py-2 text-xs font-black text-papaya shadow-soft">
+              Internetten
+            </span>
+          ) : null}
         </div>
-      </Link>
+      </MaybeRecipeLink>
 
       <div className="p-5">
         <p className="text-xs font-black uppercase tracking-[0.16em] text-sage">{recipe.category || "Tarif"}</p>
-        <Link href={`/recipes/${recipe.id}`}>
+        <MaybeRecipeLink recipe={recipe}>
           <h2 className="mt-2 text-3xl font-black leading-tight text-cocoa">{recipe.title}</h2>
-        </Link>
+        </MaybeRecipeLink>
+        {recipe.source_name ? <p className="mt-2 text-xs font-black text-cocoa/45">Kaynak: {recipe.source_name}</p> : null}
         <div className="mt-4 flex flex-wrap gap-2">
           {meta.map((item) => (
             <span key={item} className="rounded-full bg-cream-100 px-3 py-1.5 text-xs font-black text-cocoa/65">
@@ -261,7 +286,7 @@ function RecipeSwipeCard({
                 <button
                   key={rating}
                   className="grid h-11 place-items-center rounded-2xl bg-cream-100 text-butter active:scale-95 disabled:opacity-50"
-                  disabled={busy}
+                  disabled={busy || recipe.is_external}
                   onClick={() => onRate?.(rating)}
                   aria-label={`${rating} yildiz`}
                 >
@@ -304,6 +329,23 @@ function LeaderboardCard({ rank, recipe }: { rank: number; recipe: DiscoverRecip
         </p>
       </div>
       <Sparkles className="mt-1 shrink-0 text-papaya" size={18} />
+    </Link>
+  );
+}
+
+function MaybeRecipeLink({
+  recipe,
+  className,
+  children
+}: {
+  recipe: DiscoverRecipe;
+  className?: string;
+  children: ReactNode;
+}) {
+  if (recipe.is_external) return <div className={className}>{children}</div>;
+  return (
+    <Link href={`/recipes/${recipe.id}`} className={className}>
+      {children}
     </Link>
   );
 }

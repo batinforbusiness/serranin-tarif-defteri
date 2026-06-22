@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { saveRecipeNutrition } from "@/lib/save-recipe-nutrition";
 import { getAccessToken, getSupabaseForRequest } from "@/lib/supabase/server";
+import type { RecipeNutritionRow } from "@/lib/types";
 
 const copyRecipeSchema = z.object({
   recipe_id: z.string().uuid()
@@ -18,7 +20,7 @@ export async function POST(request: Request) {
 
     const { data: source, error: sourceError } = await userSupabase
       .from("recipes")
-      .select("*,recipe_ingredients(name,amount,unit),recipe_steps(step_order,description)")
+      .select("*,recipe_ingredients(name,amount,unit),recipe_steps(step_order,description),recipe_nutrition(*)")
       .eq("id", body.recipe_id)
       .single();
 
@@ -63,6 +65,32 @@ export async function POST(request: Request) {
     ]);
 
     if (ingredientsError || stepsError) throw ingredientsError ?? stepsError;
+
+    const sourceNutrition = Array.isArray(source.recipe_nutrition)
+      ? ((source.recipe_nutrition[0] as RecipeNutritionRow | undefined) ?? undefined)
+      : undefined;
+
+    await saveRecipeNutrition(userSupabase, {
+      id: newRecipe.id,
+      title: source.title,
+      category: source.category,
+      servings: source.servings,
+      cooking_time: source.cooking_time,
+      notes: source.notes,
+      ingredients,
+      steps,
+      nutrition: sourceNutrition
+        ? {
+            total_calories: sourceNutrition.total_calories,
+            calories_per_serving: sourceNutrition.calories_per_serving,
+            protein_g: sourceNutrition.protein_g,
+            carbs_g: sourceNutrition.carbs_g,
+            fat_g: sourceNutrition.fat_g,
+            confidence: sourceNutrition.confidence,
+            nutrition_note: sourceNutrition.nutrition_note ?? ""
+          }
+        : undefined
+    });
 
     return NextResponse.json({ id: newRecipe.id });
   } catch (error) {
