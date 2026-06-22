@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { lightenRecipe } from "@/lib/lighten-recipe";
 import { lightenRecipeResultSchema } from "@/lib/validation";
-import { getAccessToken, getSupabaseForRequest } from "@/lib/supabase/server";
+import { getAccessToken, getSupabaseAdmin, getSupabaseForRequest } from "@/lib/supabase/server";
 
 const lightenRequestSchema = z.object({
   recipe_id: z.string().uuid()
@@ -17,7 +17,11 @@ export async function POST(request: Request) {
     if (!accessToken) return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
 
     const body = lightenRequestSchema.parse(await request.json());
-    const supabase = getSupabaseForRequest(accessToken);
+    const userSupabase = getSupabaseForRequest(accessToken);
+    const { data: userData, error: userError } = await userSupabase.auth.getUser(accessToken);
+    if (userError || !userData.user) return NextResponse.json({ error: "Oturum doğrulanamadı." }, { status: 401 });
+
+    const supabase = getRecipeWriter(accessToken);
 
     const { data: existing } = await supabase
       .from("recipe_lighten_suggestions")
@@ -25,17 +29,18 @@ export async function POST(request: Request) {
       .eq("recipe_id", body.recipe_id)
       .maybeSingle();
 
-    if (existing?.result) {
-      return NextResponse.json({ suggestion: existing });
-    }
+    if (existing?.result) return NextResponse.json({ suggestion: existing });
 
     const { data: recipe, error } = await supabase
       .from("recipes")
-      .select("id,title,category,servings,cooking_time,notes,recipe_ingredients(name,amount,unit),recipe_steps(step_order,description)")
+      .select("id,user_id,is_public,title,category,servings,cooking_time,notes,recipe_ingredients(name,amount,unit),recipe_steps(step_order,description)")
       .eq("id", body.recipe_id)
       .single();
 
     if (error || !recipe) return NextResponse.json({ error: "Tarif bulunamadı." }, { status: 404 });
+    if (recipe.user_id !== userData.user.id && recipe.is_public === false) {
+      return NextResponse.json({ error: "Tarif bulunamadı." }, { status: 404 });
+    }
 
     const result = await lightenRecipe({
       title: recipe.title,
@@ -58,15 +63,20 @@ export async function POST(request: Request) {
       .single();
 
     if (upsertError || !data) {
-      return NextResponse.json(
-        { error: "Hafifletme önerisi kaydedilemedi. Supabase'de recipe-lighten-suggestions.sql dosyasını çalıştır." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Hafifletme önerisi kaydedilemedi. Supabase hafifletme tablosunu kontrol et." }, { status: 400 });
     }
 
     return NextResponse.json({ suggestion: data });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Tarif hafifletilemedi.";
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+function getRecipeWriter(accessToken: string) {
+  try {
+    return getSupabaseAdmin();
+  } catch {
+    return getSupabaseForRequest(accessToken);
   }
 }

@@ -27,7 +27,7 @@ import { SafeImage } from "@/components/safe-image";
 import { useAuth } from "@/components/auth-provider";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { calculateSerraScore } from "@/lib/serra-score";
-import type { RecipeDetail, RecipeLightenSuggestionRow } from "@/lib/types";
+import type { RecipeDetail, RecipeLightenSuggestionRow, RecipeNutritionRow } from "@/lib/types";
 
 type IngredientForm = {
   name: string;
@@ -111,7 +111,7 @@ export default function RecipeDetailPage() {
     }
 
     if (data) {
-      const detail = data as RecipeDetail;
+      const detail = normalizeRecipeForClient(data as RecipeDetail);
       detail.recipe_steps.sort((a, b) => a.step_order - b.step_order);
       setRecipe(detail);
       setCanEdit(canEditValue);
@@ -137,7 +137,7 @@ export default function RecipeDetailPage() {
   }, [recipe?.id, recipe?.image_url, session, autoImageTried]);
 
   useEffect(() => {
-    if (!recipe || !session || recipe.recipe_nutrition?.[0] || autoNutritionTried) return;
+    if (!recipe || !session || getRecipeNutrition(recipe) || autoNutritionTried) return;
     setAutoNutritionTried(true);
     void calculateNutrition({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -573,18 +573,13 @@ export default function RecipeDetailPage() {
 
             {serraScore ? <SerraScoreCard score={serraScore} /> : null}
 
-            <NutritionCard
-              nutrition={recipe.recipe_nutrition?.[0] ?? null}
-              calculating={calculatingNutrition}
-            />
+            <NutritionCard nutrition={getRecipeNutrition(recipe)} calculating={calculatingNutrition} />
 
-            {canEdit ? (
-              <LightenRecipeCard
-                suggestion={recipe.recipe_lighten_suggestions?.[0] ?? null}
-                loading={lighteningRecipe}
-                onLighten={() => void lightenCurrentRecipe()}
-              />
-            ) : null}
+            <LightenRecipeCard
+              suggestion={getLightenSuggestion(recipe)}
+              loading={lighteningRecipe}
+              onLighten={() => void lightenCurrentRecipe()}
+            />
 
             <section className="soft-card rounded-3xl p-5">
               <div className="flex items-center justify-between gap-3">
@@ -930,6 +925,29 @@ function MacroPill({ label, value }: { label: string; value: string }) {
 
 function roundMacro(value: number) {
   return Number(value ?? 0).toFixed(value % 1 ? 1 : 0);
+}
+
+function normalizeRecipeForClient(recipe: RecipeDetail): RecipeDetail {
+  return {
+    ...recipe,
+    recipe_ingredients: ensureArray(recipe.recipe_ingredients),
+    recipe_steps: ensureArray(recipe.recipe_steps),
+    recipe_nutrition: ensureArray(recipe.recipe_nutrition as unknown),
+    recipe_lighten_suggestions: ensureArray(recipe.recipe_lighten_suggestions as unknown)
+  } as RecipeDetail;
+}
+
+function getRecipeNutrition(recipe: RecipeDetail): RecipeNutritionRow | null {
+  return ensureArray<RecipeNutritionRow>(recipe.recipe_nutrition as unknown)[0] ?? null;
+}
+
+function getLightenSuggestion(recipe: RecipeDetail): RecipeLightenSuggestionRow | null {
+  return ensureArray<RecipeLightenSuggestionRow>(recipe.recipe_lighten_suggestions as unknown)[0] ?? null;
+}
+
+function ensureArray<T>(value: T[] | T | null | undefined | unknown): T[] {
+  if (!value) return [];
+  return Array.isArray(value) ? (value as T[]) : [value as T];
 }
 
 function IconButton({

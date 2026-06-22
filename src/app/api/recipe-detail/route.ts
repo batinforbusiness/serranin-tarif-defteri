@@ -27,11 +27,26 @@ export async function GET(request: Request) {
     const isPublic = data.is_public !== false;
     if (!isOwner && !isPublic) return NextResponse.json({ error: "Tarif bulunamadi." }, { status: 404 });
 
-    return NextResponse.json({ recipe: data, can_edit: isOwner });
+    return NextResponse.json({ recipe: normalizeRecipeDetail(data), can_edit: isOwner });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Tarif yuklenemedi.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
+}
+
+function normalizeRecipeDetail<T extends Record<string, unknown>>(recipe: T) {
+  return {
+    ...recipe,
+    recipe_nutrition: normalizeNested(recipe.recipe_nutrition),
+    recipe_lighten_suggestions: normalizeNested(recipe.recipe_lighten_suggestions),
+    recipe_ingredients: normalizeNested(recipe.recipe_ingredients),
+    recipe_steps: normalizeNested(recipe.recipe_steps)
+  };
+}
+
+function normalizeNested(value: unknown) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
 }
 
 function getRecipeReader(accessToken: string) {

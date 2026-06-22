@@ -1,4 +1,5 @@
 import { calculateRecipeNutrition } from "@/lib/nutrition";
+import { getSupabaseAdmin } from "@/lib/supabase/server";
 
 type SupabaseLike = {
   from: (table: string) => {
@@ -35,6 +36,7 @@ type SavedNutritionRecipe = {
 
 export async function saveRecipeNutrition(supabase: SupabaseLike, recipe: SavedNutritionRecipe) {
   try {
+    const writer = getNutritionWriter(supabase);
     const nutrition =
       recipe.nutrition ??
       (await calculateRecipeNutrition({
@@ -47,7 +49,7 @@ export async function saveRecipeNutrition(supabase: SupabaseLike, recipe: SavedN
         steps: recipe.steps
       }));
 
-    const { error } = await supabase.from("recipe_nutrition").upsert({
+    const { error } = await writer.from("recipe_nutrition").upsert({
       recipe_id: recipe.id,
       total_calories: nutrition.total_calories,
       calories_per_serving: nutrition.calories_per_serving,
@@ -61,5 +63,13 @@ export async function saveRecipeNutrition(supabase: SupabaseLike, recipe: SavedN
     if (error) console.warn("Recipe nutrition could not be stored", error.message);
   } catch (error) {
     console.warn("Recipe nutrition could not be calculated", error instanceof Error ? error.message : error);
+  }
+}
+
+function getNutritionWriter(fallback: SupabaseLike): SupabaseLike {
+  try {
+    return getSupabaseAdmin() as unknown as SupabaseLike;
+  } catch {
+    return fallback;
   }
 }

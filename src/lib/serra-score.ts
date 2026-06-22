@@ -16,7 +16,9 @@ export function calculateSerraScore(recipe: RecipeDetail): SerraScore {
   const hasTime = Boolean(recipe.cooking_time);
   const hasServings = Boolean(recipe.servings);
   const hasImage = Boolean(recipe.image_url);
-  const nutrition = recipe.recipe_nutrition?.[0];
+  const nutrition = Array.isArray(recipe.recipe_nutrition)
+    ? recipe.recipe_nutrition[0]
+    : recipe.recipe_nutrition || null;
 
   const practicality = clamp(100 - Math.max(0, ingredientCount - 7) * 4 - Math.max(0, stepCount - 6) * 5 + (hasTime ? 8 : 0));
   const lightness = nutrition?.calories_per_serving
