@@ -58,7 +58,12 @@ export async function GET(request: Request) {
     const { data: userData, error: userError } = await userSupabase.auth.getUser(accessToken);
     if (userError || !userData.user) return NextResponse.json({ error: "Oturum doğrulanamadı." }, { status: 401 });
 
-    const supabase = getSupabaseAdmin();
+    let supabase = userSupabase;
+    try {
+      supabase = getSupabaseAdmin();
+    } catch {
+      supabase = userSupabase;
+    }
     const [{ data: recipes, error: recipesError }, { data: ratings, error: ratingsError }] = await Promise.all([
       supabase
         .from("recipes")

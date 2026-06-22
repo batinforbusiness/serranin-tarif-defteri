@@ -29,7 +29,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           </div>
           <h1 className="text-3xl font-semibold">Kurulum bekleniyor</h1>
           <p className="mt-3 text-sm leading-6 text-cocoa/70">
-            Uygulamayi acmak icin proje klasorundeki <strong>.env.local</strong> dosyasina gerekli anahtarlari ekle.
+            Uygulamayı açmak için proje ayarlarında gerekli Supabase, Gemini ve Apify anahtarları olmalı.
           </p>
           <div className="mt-5 rounded-2xl bg-white p-4 text-xs leading-6 text-cocoa/75">
             <p>NEXT_PUBLIC_SUPABASE_URL=...</p>
@@ -45,60 +45,81 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (user) return <>{children}</>;
 
-  async function signIn() {
+  function validateCredentials() {
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || password.length < 6) return;
+
+    if (!normalizedEmail) {
+      setMessage("E-posta adresini yazmalısın.");
+      return null;
+    }
+
+    if (password.length < 6) {
+      setMessage("Şifre en az 6 karakter olmalı.");
+      return null;
+    }
+
+    return { email: normalizedEmail, password };
+  }
+
+  async function signIn() {
+    const credentials = validateCredentials();
+    if (!credentials) return;
 
     setIsSending(true);
     setMessage("");
-    const supabase = getBrowserSupabase();
-    const { error } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
-      password
-    });
 
-    if (error) {
-      setMessage("Giris yapilamadi. E-posta ve sifreyi kontrol et.");
-    } else {
-      setMessage("Giris yapildi.");
+    try {
+      const supabase = getBrowserSupabase();
+      const { error } = await supabase.auth.signInWithPassword(credentials);
+
+      if (error) {
+        setMessage("Giriş yapılamadı. E-posta ve şifreyi kontrol et.");
+      } else {
+        setMessage("Giriş yapıldı.");
+      }
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "Giriş yapılamadı.");
+    } finally {
+      setIsSending(false);
     }
-    setIsSending(false);
   }
 
   async function signUp() {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || password.length < 6) return;
+    const credentials = validateCredentials();
+    if (!credentials) return;
 
     setIsSending(true);
     setMessage("");
-    const supabase = getBrowserSupabase();
+
     try {
+      const supabase = getBrowserSupabase();
       const response = await fetch("/api/create-account", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: normalizedEmail, password })
+        body: JSON.stringify(credentials)
       });
       const payload = await response.json();
 
       if (!response.ok) {
         const text = String(payload.error ?? "");
-        if (!text.toLowerCase().includes("already")) throw new Error(text || "Hesap olusturulamadi.");
+        if (!text.toLowerCase().includes("already")) {
+          const { error: fallbackError } = await supabase.auth.signUp(credentials);
+          if (fallbackError) throw fallbackError;
+        }
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password
-      });
+      const { error } = await supabase.auth.signInWithPassword(credentials);
 
       if (error) {
-        setMessage("Hesap var ama giris yapilamadi. Sifreyi kontrol edip Giris yap'a bas.");
+        setMessage("Hesap oluşturuldu. Giriş olmazsa e-postanı kontrol edip tekrar Giriş yap'a bas.");
       } else {
-        setMessage("Hesap hazir, giris yapildi.");
+        setMessage("Hesap hazır, giriş yapıldı.");
       }
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : "Hesap olusturulamadi.");
+      setMessage(caught instanceof Error ? caught.message : "Hesap oluşturulamadı.");
+    } finally {
+      setIsSending(false);
     }
-    setIsSending(false);
   }
 
   return (
@@ -109,7 +130,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         </div>
         <h1 className="text-3xl font-semibold">Serra&apos;nın Tarif Defteri</h1>
         <p className="mt-3 text-sm leading-6 text-cocoa/70">
-          iPhone ana ekran uygulamasinda kalmak icin e-posta ve sifreyle giris yap.
+          iPhone ana ekran uygulamasında kalmak için e-posta ve şifreyle giriş yap.
         </p>
 
         <input
@@ -119,33 +140,41 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           autoComplete="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void signIn();
+          }}
         />
         <input
           className="mt-3 w-full rounded-2xl border border-rosewood/15 bg-white px-4 py-4 outline-none ring-rosewood/20 focus:ring-4"
-          placeholder="Sifre"
+          placeholder="Şifre"
           type="password"
           autoComplete="current-password"
           minLength={6}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void signIn();
+          }}
         />
         <button
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-rosewood px-5 py-4 font-semibold text-white disabled:opacity-50"
-          disabled={!email || password.length < 6 || isSending}
+          type="button"
+          disabled={isSending}
           onClick={() => void signIn()}
         >
           {isSending ? <Loader2 className="animate-spin" size={18} /> : <LogIn size={18} />}
-          Giris yap
+          Giriş yap
         </button>
         <button
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-cream-100 px-5 py-3 text-sm font-black text-rosewood disabled:opacity-50"
-          disabled={!email || password.length < 6 || isSending}
+          type="button"
+          disabled={isSending}
           onClick={() => void signUp()}
         >
-          <UserPlus size={17} />
-          Yeni hesap olustur
+          {isSending ? <Loader2 className="animate-spin" size={17} /> : <UserPlus size={17} />}
+          Yeni hesap oluştur
         </button>
-        <p className="mt-3 text-center text-xs font-semibold text-cocoa/50">Sifre en az 6 karakter olmali.</p>
+        <p className="mt-3 text-center text-xs font-semibold text-cocoa/50">Şifre en az 6 karakter olmalı.</p>
 
         {message ? <p className="mt-4 rounded-2xl bg-cream-100 px-4 py-3 text-sm font-semibold text-cocoa/70">{message}</p> : null}
       </div>

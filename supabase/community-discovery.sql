@@ -31,6 +31,50 @@ create policy "Users can read public recipes"
 on public.recipes for select
 using (true);
 
+drop policy if exists "Users can read public recipe ingredients" on public.recipe_ingredients;
+create policy "Users can read public recipe ingredients"
+on public.recipe_ingredients for select
+using (
+  exists (
+    select 1 from public.recipes
+    where recipes.id = recipe_ingredients.recipe_id
+    and recipes.is_public = true
+  )
+);
+
+drop policy if exists "Users can read public recipe steps" on public.recipe_steps;
+create policy "Users can read public recipe steps"
+on public.recipe_steps for select
+using (
+  exists (
+    select 1 from public.recipes
+    where recipes.id = recipe_steps.recipe_id
+    and recipes.is_public = true
+  )
+);
+
+drop policy if exists "Users can read public recipe nutrition" on public.recipe_nutrition;
+create policy "Users can read public recipe nutrition"
+on public.recipe_nutrition for select
+using (
+  exists (
+    select 1 from public.recipes
+    where recipes.id = recipe_nutrition.recipe_id
+    and recipes.is_public = true
+  )
+);
+
+drop policy if exists "Users can read public recipe lighten suggestions" on public.recipe_lighten_suggestions;
+create policy "Users can read public recipe lighten suggestions"
+on public.recipe_lighten_suggestions for select
+using (
+  exists (
+    select 1 from public.recipes
+    where recipes.id = recipe_lighten_suggestions.recipe_id
+    and recipes.is_public = true
+  )
+);
+
 drop policy if exists "Users can read ratings" on public.recipe_ratings;
 create policy "Users can read ratings"
 on public.recipe_ratings for select

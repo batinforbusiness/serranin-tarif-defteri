@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getAccessToken, getSupabaseAdmin, getSupabaseForRequest } from "@/lib/supabase/server";
+import { getAccessToken, getSupabaseForRequest } from "@/lib/supabase/server";
 
 const copyRecipeSchema = z.object({
   recipe_id: z.string().uuid()
@@ -16,8 +16,7 @@ export async function POST(request: Request) {
     const { data: userData, error: userError } = await userSupabase.auth.getUser(accessToken);
     if (userError || !userData.user) return NextResponse.json({ error: "Oturum dogrulanamadi." }, { status: 401 });
 
-    const supabase = getSupabaseAdmin();
-    const { data: source, error: sourceError } = await supabase
+    const { data: source, error: sourceError } = await userSupabase
       .from("recipes")
       .select("*,recipe_ingredients(name,amount,unit),recipe_steps(step_order,description)")
       .eq("id", body.recipe_id)
@@ -27,7 +26,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Kopyalanacak tarif bulunamadi." }, { status: 404 });
     }
 
-    const { data: newRecipe, error: recipeError } = await supabase
+    const { data: newRecipe, error: recipeError } = await userSupabase
       .from("recipes")
       .insert({
         user_id: userData.user.id,
@@ -59,8 +58,8 @@ export async function POST(request: Request) {
     }));
 
     const [{ error: ingredientsError }, { error: stepsError }] = await Promise.all([
-      ingredients.length ? supabase.from("recipe_ingredients").insert(ingredients) : Promise.resolve({ error: null }),
-      steps.length ? supabase.from("recipe_steps").insert(steps) : Promise.resolve({ error: null })
+      ingredients.length ? userSupabase.from("recipe_ingredients").insert(ingredients) : Promise.resolve({ error: null }),
+      steps.length ? userSupabase.from("recipe_steps").insert(steps) : Promise.resolve({ error: null })
     ]);
 
     if (ingredientsError || stepsError) throw ingredientsError ?? stepsError;

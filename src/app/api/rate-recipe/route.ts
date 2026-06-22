@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getAccessToken, getSupabaseAdmin, getSupabaseForRequest } from "@/lib/supabase/server";
+import { getAccessToken, getSupabaseForRequest } from "@/lib/supabase/server";
 
 const rateRecipeSchema = z.object({
   recipe_id: z.string().uuid(),
@@ -17,8 +17,7 @@ export async function POST(request: Request) {
     const { data: userData, error: userError } = await userSupabase.auth.getUser(accessToken);
     if (userError || !userData.user) return NextResponse.json({ error: "Oturum doğrulanamadı." }, { status: 401 });
 
-    const supabase = getSupabaseAdmin();
-    const { data: recipe, error: recipeError } = await supabase
+    const { data: recipe, error: recipeError } = await userSupabase
       .from("recipes")
       .select("id")
       .eq("id", body.recipe_id)
@@ -28,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Bu tarif keşifte puanlanamaz." }, { status: 400 });
     }
 
-    const { error } = await supabase.from("recipe_ratings").upsert(
+    const { error } = await userSupabase.from("recipe_ratings").upsert(
       {
         recipe_id: body.recipe_id,
         user_id: userData.user.id,

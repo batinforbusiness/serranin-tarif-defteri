@@ -144,7 +144,7 @@ export default function DiscoverPage() {
         {error ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p> : null}
         {message ? <p className="rounded-2xl bg-mint px-4 py-3 text-sm font-black text-sage">{message}</p> : null}
 
-        <div className="relative min-h-[560px]">
+        <div className="relative">
           {loading ? (
             <div className="soft-card grid min-h-[520px] place-items-center rounded-[2rem] p-6 text-center">
               <div>
@@ -215,9 +215,7 @@ function RecipeSwipeCard({
 
   return (
     <article
-      className={`absolute inset-x-0 top-0 overflow-hidden rounded-[2.2rem] bg-white shadow-premium transition ${
-        muted ? "translate-y-7 scale-[0.94] opacity-45" : "z-10"
-      }`}
+      className={`${muted ? "pointer-events-none absolute inset-x-0 top-0 translate-y-7 scale-[0.94] opacity-35" : "relative z-10"} overflow-hidden rounded-[2.2rem] bg-white shadow-premium transition`}
       onTouchStart={(event) => onTouchStart?.(event.changedTouches[0].clientX)}
       onTouchEnd={(event) => onTouchEnd?.(event.changedTouches[0].clientX)}
     >

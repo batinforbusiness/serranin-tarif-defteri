@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Compass, Home, ListChecks, Sparkles, Settings } from "lucide-react";
+import { BookOpen, Compass, Home, ListChecks, Settings, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 
 const tabs = [
